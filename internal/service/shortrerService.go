@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 
 	storageTypes "shortner/internal/storage/types"
@@ -20,21 +19,30 @@ func NewShortnerService(mapStorage storageTypes.LinkStorage) *ShorterService {
 	return &ShorterService{mapStorage: mapStorage}
 }
 
-func (s *ShorterService) ShortenLink(link string) string {
-	shortLink := encodeBase62(getHash(link))
+func (s *ShorterService) ShortenLink(link string) (string, error) {
 	if v, ok := s.mapStorage.ValuePresent(link); ok {
-		return v
+		return "http://localhost:8080/" + v, nil
 	}
+
+	shortLink := encodeBase62(getHash(link))
 	count := 0
 	for s.mapStorage.KeyPresent(shortLink) {
+		if count > 50 {
+			return "", fmt.Errorf("service: failed to generate unique short link after %d attempts", count)
+		}
 		shortLink = s.retryIfCollision(link, count)
+		count++
 	}
 	s.mapStorage.PutLink(shortLink, link)
-	return "http://localhost:8080/" + shortLink
+	return "http://localhost:8080/" + shortLink, nil
 }
 
 func (s *ShorterService) GetOriginalLink(shortLink string) (string, error) {
-	return s.mapStorage.GetLink(shortLink)
+	link, err := s.mapStorage.GetLink(shortLink)
+	if err != nil {
+		return "", fmt.Errorf("service: failed to get original url: %w", err)
+	}
+	return link, nil
 }
 
 func getHash(link string) uint64 {
@@ -52,7 +60,6 @@ func encodeBase62(hash uint64) string {
 		byteArr = append([]byte{c}, byteArr...)
 		hash = hash / 62
 	}
-
 	return string(byteArr)
 }
 
@@ -60,16 +67,6 @@ func decodeBase62(link string) uint64 {
 	var num uint64 = 0
 	for _, ch := range link {
 		var num1 uint64 = 0
-
-		//if char >= '0' && char <= '9' {
-		//	value = uint64(char - '0')
-		//} else if char >= 'A' && char <= 'Z' {
-		//	value = uint64(char - 'A' + 10)
-		//} else if char >= 'a' && char <= 'z' {
-		//	value = uint64(char - 'a' + 36)
-		//}
-
-		//var num1 uint64 = 0
 		if ch >= '0' && ch <= '9' {
 			num1 = uint64(ch - '0')
 		}
@@ -81,17 +78,7 @@ func decodeBase62(link string) uint64 {
 		}
 		num = num*62 + num1
 	}
-
 	return num
-}
-
-func ValidateLink(link string) error {
-	_, err := url.Parse(link)
-	if err != nil {
-		return fmt.Errorf("parsing url: %w", err)
-	}
-
-	return nil
 }
 
 func (s *ShorterService) retryIfCollision(link string, count int) string {
