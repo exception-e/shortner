@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,9 +17,12 @@ import (
 
 func main() {
 
+	var logHandler slog.Handler
+	logHandler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	logger := slog.New(logHandler)
 	storage := storage.NewMapStorage()
-	service := service.NewShortnerService(storage)
-	handlers := handlers.NewLinkHandler(service)
+	service := service.NewShortnerService(storage, logger)
+	handlers := handlers.NewLinkHandler(service, logger)
 
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
@@ -36,9 +40,12 @@ func main() {
 		}
 	}()
 
+	logger.Info("Server started", slog.String("addr", srv.Addr))
+
 	log.Println("Wait for signal")
 	<-ctx.Done()
-	log.Println("Signal catched")
+	log.Println("Signal caught")
+	logger.Info("Signal caught, shutting down server")
 
 	shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer shutdownCtxCancel()
