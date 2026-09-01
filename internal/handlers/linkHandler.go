@@ -10,7 +10,7 @@ import (
 	"shortner/internal/service"
 )
 
-var _ http.Handler = (*LinkHandler)(nil) /* "проверка интерфейса во время компиляции" - создает
+var _ http.Handler = (*LinkHandler)(nil) /* "Проверка интерфейса во время компиляции" - создает
 переменную и игнорирует ее. Переменная имеет тип интерфейса, на
 соответствие которому мы хотим проверить нашу структуру.
 В эту переменную кладем пустое значение типа "указатель типа
@@ -28,7 +28,7 @@ type ShortenLinkRequest struct {
 }
 
 type ShortenLinkResponse struct {
-	Link string `json:"shortLink"`
+	Alias string `json:"alias"`
 }
 
 func NewLinkHandler(s *service.ShortnerService, logger *slog.Logger) *LinkHandler {
@@ -37,7 +37,7 @@ func NewLinkHandler(s *service.ShortnerService, logger *slog.Logger) *LinkHandle
 }
 
 func (h *LinkHandler) Handler(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("request received", slog.String("request_method", r.Method),
+	h.logger.Info("Request received", slog.String("request_method", r.Method),
 		slog.String("scheme", r.URL.Scheme),
 		slog.String("host", r.Host),
 		slog.String("url", r.URL.String()))
@@ -48,7 +48,7 @@ func (h *LinkHandler) Handler(w http.ResponseWriter, r *http.Request) {
 		h.createShortLink(w, r)
 	default:
 		http.Error(w, fmt.Sprintf("invalid method: %s", r.Method), http.StatusMethodNotAllowed)
-		h.logger.Info("invalid method", slog.String("method", r.Method))
+		h.logger.Info("Invalid method", slog.String("method", r.Method))
 	}
 }
 
@@ -60,66 +60,66 @@ func (h *LinkHandler) createShortLink(w http.ResponseWriter, r *http.Request) {
 	var data []byte
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.logger.Info("unable to read request body", slog.String("error", err.Error()))
-		http.Error(w, "Cannot read request", http.StatusBadRequest)
+		h.logger.Info("Unable to read request body", slog.String("error", err.Error()))
+		http.Error(w, "cannot read request", http.StatusBadRequest)
 		return
 	}
 
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			h.logger.Warn("unable to close request body", slog.String("error", err.Error()))
+			h.logger.Warn("Unable to close request body", slog.String("error", err.Error()))
 		}
 	}()
 	var shortenRequest ShortenLinkRequest
 	if err := json.Unmarshal(data, &shortenRequest); err != nil {
-		h.logger.Info("unable to parse request body", slog.String("error", err.Error()))
-		http.Error(w, "Invalid JSON format", http.StatusBadRequest)
+		h.logger.Info("Unable to parse request body", slog.String("error", err.Error()))
+		http.Error(w, "invalid JSON format", http.StatusBadRequest)
 		return
 	}
 
 	if err := validateLink(shortenRequest.Link); err != nil {
-		h.logger.Info("invalid link", slog.String("error", err.Error()))
-		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		h.logger.Info("Invalid link", slog.String("error", err.Error()))
+		http.Error(w, "invalid URL", http.StatusBadRequest)
 		return
 	}
 
-	shortLink, err := h.Service.ShortenLink(shortenRequest.Link)
+	alias, err := h.Service.ShortenLink(shortenRequest.Link)
 	if err != nil {
-		h.logger.Error("unable to shorten link", slog.String("error", err.Error()))
-		http.Error(w, "Cannot shorten", http.StatusBadRequest)
+		h.logger.Error("Unable to shorten link", slog.String("error", err.Error()))
+		http.Error(w, "cannot shorten", http.StatusBadRequest)
 		return
 	}
 
 	resp := ShortenLinkResponse{
-		Link: shortLink,
+		Alias: alias,
 	}
 
 	respData, meer := json.Marshal(resp)
 	if meer != nil {
-		h.logger.Info("unable to marshal response", slog.String("error", meer.Error()))
-		http.Error(w, "Cannot marshall", http.StatusInternalServerError)
+		h.logger.Info("Unable to marshal response", slog.String("error", meer.Error()))
+		http.Error(w, "cannot marshall", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, werr := w.Write(respData)
 	if werr != nil {
-		h.logger.Info("unable to write response", slog.String("error", werr.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		h.logger.Info("Unable to write response", slog.String("error", werr.Error()))
+		http.Error(w, "internal Server Error", http.StatusInternalServerError)
 		return
 	}
 }
 
 func (h *LinkHandler) redirect(w http.ResponseWriter, r *http.Request) {
-	shortLink := r.URL.Path[1:]
+	alias := r.URL.Path[1:]
 
-	originalLink, err := h.Service.GetOriginalLink(shortLink)
+	originalLink, err := h.Service.GetOriginalLink(alias)
 	if err != nil {
-		h.logger.Info("unable to get original link", slog.String("error", err.Error()))
-		http.Error(w, "Link not found", http.StatusNotFound)
+		h.logger.Info("Unable to get original link", slog.String("error", err.Error()))
+		http.Error(w, "link not found", http.StatusNotFound)
 		return
 	}
 
-	fmt.Printf("Redirect %s to %s", shortLink, originalLink)
+	fmt.Printf("Redirect %s to %s", alias, originalLink)
 	fmt.Println()
 	http.Redirect(w, r, originalLink, 301)
 }

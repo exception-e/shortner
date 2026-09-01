@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"shortner/internal/handlers"
 	"shortner/internal/service"
-	"shortner/internal/storage"
+	"shortner/internal/storage/pgStorage"
 	"syscall"
 	"time"
 )
@@ -20,13 +20,27 @@ func main() {
 	var logHandler slog.Handler
 	logHandler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
 	logger := slog.New(logHandler)
-	storage := storage.NewMapStorage()
-	service := service.NewShortnerService(storage, logger)
-	handlers := handlers.NewLinkHandler(service, logger)
+	dsn := "postgres://tiffany:password@localhost:5432/linkdb?sslmode=disable"
+
+	// TODO: миграция вне контекста приложения, т.е. её не отменить
+	if err := pgStorage.RunMigrations(dsn); err != nil {
+		log.Fatal("failed to run migrations: ", err)
+	}
+
+	logger.Info("migrations applied")
+
+	pgStorage, err := pgStorage.NewPostgresStorage(dsn, logger)
+	if err != nil {
+		log.Fatal("Failed to create storage %w ", err)
+	}
+	defer pgStorage.Close()
+
+	shortnerService := service.NewShortnerService(pgStorage, logger)
+	linkHandler := handlers.NewLinkHandler(shortnerService, logger)
 
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
-		Handler: handlers,
+		Handler: linkHandler,
 	}
 
 	ctx, ctxCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -50,6 +64,7 @@ func main() {
 	shutdownCtx, shutdownCtxCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer shutdownCtxCancel()
 
+	// TODO: здесь должен быть и db.Close с тем же контекстом
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("srv.Shutdown: %v", err)
 		return

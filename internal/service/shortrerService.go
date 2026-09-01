@@ -23,33 +23,36 @@ func NewShortnerService(mapStorage storageTypes.LinkStorage, logger *slog.Logger
 }
 
 func (s *ShortnerService) ShortenLink(link string) (string, error) {
-	s.logger.Info("shortening link", slog.String("link", link))
+	s.logger.Info("Shortening link", slog.String("link", link))
 	if v, ok := s.mapStorage.ValuePresent(link); ok {
 		return "http://localhost:8080/" + v, nil
 	}
 
-	shortLink := encodeBase62(getHash(link))
+	alias := encodeBase62(getHash(link))
 	count := 0
-	for s.mapStorage.KeyPresent(shortLink) {
+	for s.mapStorage.KeyPresent(alias) {
 		if count > 50 {
-			s.logger.Error("failed to generate unique short link", slog.String("link", link))
-			return "", fmt.Errorf("service: failed to generate unique short link after %d attempts", count)
+			s.logger.Error("Failed to generate unique short link")
+			return "", fmt.Errorf("service: failed to generate unique alias for %s after %d attempts", link, count)
 		}
-		shortLink = s.retryIfCollision(link, count)
+		alias = s.addSalt(link, count)
 		count++
 	}
-	s.mapStorage.PutLink(shortLink, link)
-	s.logger.Info("link shortened and saved", slog.String("shortlink", shortLink))
-	return "http://localhost:8080/" + shortLink, nil
+	_, err := s.mapStorage.PutLink(alias, link)
+	if err != nil {
+		return "", fmt.Errorf("service failed to save url %s: %w", link, err)
+	}
+	s.logger.Info("Link shortened and saved", slog.String("alias", alias))
+	return "http://localhost:8080/" + alias, nil
 }
 
-func (s *ShortnerService) GetOriginalLink(shortLink string) (string, error) {
-	s.logger.Info("getting original link", slog.String("shortLink", shortLink))
-	link, err := s.mapStorage.GetLink(shortLink)
+func (s *ShortnerService) GetOriginalLink(alias string) (string, error) {
+	s.logger.Info("Getting original link", slog.String("shortLink", alias))
+	link, err := s.mapStorage.GetLink(alias)
 	if err != nil {
-		return "", fmt.Errorf("service: failed to get original url: %w", err)
+		return "", fmt.Errorf("service: failed to get original url for alias %s: %w", alias, err)
 	}
-	s.logger.Info("original link", slog.String("link", link))
+	s.logger.Info("Original link", slog.String("link", link))
 	return link, nil
 }
 
@@ -89,7 +92,7 @@ func decodeBase62(link string) uint64 {
 	return num
 }
 
-func (s *ShortnerService) retryIfCollision(link string, count int) string {
+func (s *ShortnerService) addSalt(link string, count int) string {
 	newShortLink := encodeBase62(getHash(link + strconv.Itoa(count)))
 	return newShortLink
 }
