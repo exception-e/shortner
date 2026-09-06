@@ -83,7 +83,7 @@ func (h *LinkHandler) createShortLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alias, err := h.Service.ShortenLink(shortenRequest.Link)
+	alias, err := h.Service.ShortenLink(r.Context(), shortenRequest.Link)
 	if err != nil {
 		h.logger.Error("Unable to shorten link", slog.String("error", err.Error()))
 		http.Error(w, "cannot shorten", http.StatusBadRequest)
@@ -112,16 +112,16 @@ func (h *LinkHandler) createShortLink(w http.ResponseWriter, r *http.Request) {
 func (h *LinkHandler) redirect(w http.ResponseWriter, r *http.Request) {
 	alias := r.URL.Path[1:]
 
-	originalLink, err := h.Service.GetOriginalLink(alias)
+	originalLink, err := h.Service.GetOriginalLink(r.Context(), alias)
 	if err != nil {
 		h.logger.Info("Unable to get original link", slog.String("error", err.Error()))
 		http.Error(w, "link not found", http.StatusNotFound)
 		return
 	}
 
-	fmt.Printf("Redirect %s to %s", alias, originalLink)
+	fmt.Printf("Redirect %s to %s", alias, originalLink.OriginalUrl)
 	fmt.Println()
-	http.Redirect(w, r, originalLink, 301)
+	http.Redirect(w, r, originalLink.OriginalUrl, 301)
 }
 
 func validateLink(link string) error {

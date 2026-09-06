@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"shortner/internal/domain"
 	"shortner/internal/storage/types"
+	"shortner/internal/utils"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -35,22 +35,45 @@ func NewPostgresStorage(dsn string, logger *slog.Logger) (*PgStorage, error) {
 	}, nil
 }
 
-// TODO: здесь должен быть доменный объект (/domain/link)??????????
-func (store *PgStorage) PutLink(link *domain.Link) (string, error) {
-	_, err := store.db.ExecContext(context.Background(),
-		"INSERT INTO links (shortlink, original_url) VALUES ($1, $2)",
-		link.Alias, link.OriginalUrl)
-	if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
-		return "", types.ErrAlreadyExists
+func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string, error) {
+	var existingAlias string
+	alias := link.Alias
+	const attemptCounter = 10
+
+	for i := 0; i < attemptCounter; i++ {
+		if i > 0 {
+			alias = utils.AddSalt(link.Alias, i)
+		}
+		err := store.db.QueryRowContext(ctx,
+			"INSERT INTO links (short_link, original_url) "+
+				"VALUES ($1, $2)"+
+				"ON CONFLICT(short_link) DO NOTHING"+
+				"RETURNING short_link",
+			alias, link.OriginalUrl).Scan(&existingAlias)
+		if err == nil {
+			return existingAlias, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("failed to insert link: %w", err)
+		}
+
+		if errors.Is(err, sql.ErrNoRows) {
+			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalUrl).Scan(&existingAlias)
+			if err == nil {
+				return existingAlias, nil
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return "", fmt.Errorf("failed to insert link: %w", err)
+			}
+		}
 	}
-	return link.Alias, nil
+	return "", fmt.Errorf("failed to insert link after %d attempts", attemptCounter)
 }
 
-// TODO: здесь должен возвращаться доменный объект ?????????????
-func (store *PgStorage) GetLink(alias string) (*domain.Link, error) {
+func (store *PgStorage) GetLink(ctx context.Context, alias string) (*domain.Link, error) {
 	var dto types.LinkDTO
 
-	err := store.db.QueryRowContext(context.Background(),
+	err := store.db.QueryRowContext(ctx,
 		"SELECT id, short_code, original_url, created_at FROM links WHERE shortlink == $1",
 		alias).
 		Scan(&dto.ID, &dto.Alias, &dto.OriginalURL, &dto.CreatedAt)
@@ -68,12 +91,6 @@ func (store *PgStorage) GetLink(alias string) (*domain.Link, error) {
 			OriginalUrl: dto.OriginalURL,
 			CreatedAt:   dto.CreatedAt},
 		nil
-}
-func (store *PgStorage) ValuePresent(link string) (string, bool) {
-	return "", false
-}
-func (store *PgStorage) KeyPresent(shortLink string) bool {
-	return false
 }
 
 func (store *PgStorage) Close() error {

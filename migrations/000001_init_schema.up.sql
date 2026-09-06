@@ -6,4 +6,3 @@ create table if not exists links (
 );
 
 create index idx_short_link on links (short_link);
-create index idx_original_url on links (original_url);

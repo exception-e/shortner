@@ -29,13 +29,13 @@ func main() {
 
 	logger.Info("migrations applied")
 
-	pgStorage, err := pgStorage.NewPostgresStorage(dsn, logger)
+	storage, err := pgStorage.NewPostgresStorage(dsn, logger)
 	if err != nil {
 		log.Fatal("Failed to create storage %w ", err)
 	}
-	defer pgStorage.Close()
+	defer storage.Close()
 
-	shortnerService := service.NewShortnerService(pgStorage, logger)
+	shortnerService := service.NewShortnerService(storage, logger)
 	linkHandler := handlers.NewLinkHandler(shortnerService, logger)
 
 	srv := &http.Server{
@@ -67,6 +67,7 @@ func main() {
 	// TODO: здесь должен быть и db.Close с тем же контекстом
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("srv.Shutdown: %v", err)
+		storage.Close()
 		return
 	}
 

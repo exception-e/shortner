@@ -1,6 +1,7 @@
 package mapStorage
 
 import (
+	"context"
 	"shortner/internal/domain"
 	"shortner/internal/storage/types"
 	"sync"
@@ -18,7 +19,7 @@ func NewMapStorage() *MapStorage {
 		idAliasIndex: make(map[int64]string)}
 }
 
-func (s *MapStorage) PutLink(link *domain.Link) (string, error) {
+func (s *MapStorage) PutLink(ctx context.Context, link *domain.Link) (string, error) {
 	s.mu.Lock()
 	val, ok := s.data[link.Alias]
 	s.mu.Unlock()
@@ -29,7 +30,7 @@ func (s *MapStorage) PutLink(link *domain.Link) (string, error) {
 	return val.Alias, nil
 }
 
-func (s *MapStorage) GetLink(alias string) (*domain.Link, error) {
+func (s *MapStorage) GetLink(ctx context.Context, alias string) (*domain.Link, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	link, ok := s.data[alias]

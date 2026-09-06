@@ -1,13 +1,13 @@
 package types
 
-import "shortner/internal/domain"
+import (
+	"context"
+	"shortner/internal/domain"
+)
 
 // TODO: godocs
 // TODO: ctx
 type LinkStorage interface {
-	PutLink(*domain.Link) (string, error)
-	GetLink(shortLink string) (*domain.Link, error)
-	// TODO: IsPresent
-	ValuePresent(link string) (string, bool)
-	KeyPresent(shortLink string) bool
+	PutLink(ctx context.Context, link *domain.Link) (string, error)
+	GetLink(ctx context.Context, alias string) (*domain.Link, error)
 }
