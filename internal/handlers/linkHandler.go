@@ -1,22 +1,27 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"shortner/internal/service"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-var _ http.Handler = (*LinkHandler)(nil) /* "Проверка интерфейса во время компиляции" - создает
-переменную и игнорирует ее. Переменная имеет тип интерфейса, на
-соответствие которому мы хотим проверить нашу структуру.
-В эту переменную кладем пустое значение типа "указатель типа
-структуры". Это не создает объект -> не потребляет ресурсы,
-но если интерфейс реализован неправильно, компиляция упадет
-в этой строке*/
+//var _ http.Handler = (*LinkHandler)(nil) /* "Проверка интерфейса во время компиляции" - создает
+//переменную и игнорирует ее. Переменная имеет тип интерфейса, на
+//соответствие которому мы хотим проверить нашу структуру.
+//В эту переменную кладем пустое значение типа "указатель типа
+//структуры". Это не создает объект -> не потребляет ресурсы,
+//но если интерфейс реализован неправильно, компиляция упадет
+//в этой строке*/
 
 type LinkHandler struct {
 	Service *service.ShortnerService
@@ -28,7 +33,7 @@ type ShortenLinkRequest struct {
 }
 
 type ShortenLinkResponse struct {
-	Alias string `json:"alias"`
+	ShortLink string `json:"shortLink"`
 }
 
 func NewLinkHandler(s *service.ShortnerService, logger *slog.Logger) *LinkHandler {
@@ -36,92 +41,61 @@ func NewLinkHandler(s *service.ShortnerService, logger *slog.Logger) *LinkHandle
 	return &LinkHandler{Service: s, logger: componentLogger}
 }
 
-func (h *LinkHandler) Handler(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("Request received", slog.String("request_method", r.Method),
-		slog.String("scheme", r.URL.Scheme),
-		slog.String("host", r.Host),
-		slog.String("url", r.URL.String()))
-	switch r.Method {
-	case http.MethodGet:
-		h.redirect(w, r)
-	case http.MethodPost:
-		h.createShortLink(w, r)
-	default:
-		http.Error(w, fmt.Sprintf("invalid method: %s", r.Method), http.StatusMethodNotAllowed)
-		h.logger.Info("Invalid method", slog.String("method", r.Method))
-	}
-}
+func (h *LinkHandler) CreateShortLink(w http.ResponseWriter, r *http.Request) {
 
-func (h *LinkHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.Handler(w, r)
-}
-
-func (h *LinkHandler) createShortLink(w http.ResponseWriter, r *http.Request) {
-	var data []byte
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		h.logger.Info("Unable to read request body", slog.String("error", err.Error()))
-		http.Error(w, "cannot read request", http.StatusBadRequest)
-		return
-	}
-
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			h.logger.Warn("Unable to close request body", slog.String("error", err.Error()))
-		}
-	}()
 	var shortenRequest ShortenLinkRequest
-	if err := json.Unmarshal(data, &shortenRequest); err != nil {
-		h.logger.Info("Unable to parse request body", slog.String("error", err.Error()))
-		http.Error(w, "invalid JSON format", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&shortenRequest); err != nil {
+		h.respondError(r.Context(), w, http.StatusBadRequest, "Unable to parse request body", err)
 		return
 	}
 
 	if err := validateLink(shortenRequest.Link); err != nil {
-		h.logger.Info("Invalid link", slog.String("error", err.Error()))
-		http.Error(w, "invalid URL", http.StatusBadRequest)
+		h.respondError(r.Context(), w, http.StatusBadRequest, "Invalid link", err)
 		return
 	}
 
 	alias, err := h.Service.ShortenLink(r.Context(), shortenRequest.Link)
-	if err != nil {
-		h.logger.Error("Unable to shorten link", slog.String("error", err.Error()))
-		http.Error(w, "cannot shorten", http.StatusBadRequest)
+	if err != nil { //TODO специфические ошибки
+		h.respondError(r.Context(), w, http.StatusBadRequest, "Unable to shorten link", err)
 		return
 	}
 
 	resp := ShortenLinkResponse{
-		Alias: alias,
+		ShortLink: alias,
 	}
 
-	respData, meer := json.Marshal(resp)
-	if meer != nil {
-		h.logger.Info("Unable to marshal response", slog.String("error", meer.Error()))
-		http.Error(w, "cannot marshall", http.StatusInternalServerError)
+	respData, merr := json.Marshal(resp)
+	if merr != nil {
+		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to marshal response", merr)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, werr := w.Write(respData)
 	if werr != nil {
-		h.logger.Info("Unable to write response", slog.String("error", werr.Error()))
-		http.Error(w, "internal Server Error", http.StatusInternalServerError)
+		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to write response", werr)
 		return
 	}
 }
 
-func (h *LinkHandler) redirect(w http.ResponseWriter, r *http.Request) {
-	alias := r.URL.Path[1:]
-
-	originalLink, err := h.Service.GetOriginalLink(r.Context(), alias)
-	if err != nil {
-		h.logger.Info("Unable to get original link", slog.String("error", err.Error()))
-		http.Error(w, "link not found", http.StatusNotFound)
+func (h *LinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
+	alias := strings.TrimSpace(chi.URLParam(r, "alias"))
+	if alias == "" {
+		h.respondError(r.Context(), w, http.StatusBadRequest, "Missing alias",
+			ValidationError{message: "missing alias", value: ""})
 		return
 	}
+	originalLink, err := h.Service.GetOriginalLink(r.Context(), alias)
+	if err != nil {
+		h.respondError(r.Context(), w, http.StatusNotFound, "Unable to get original link", err)
+		return
+	}
+	h.logger.InfoContext(r.Context(), "redirect",
+		"alias", alias,
+		"original_url", originalLink.OriginalUrl,
+		"user_agent", r.UserAgent(),
+		"ip", getClientIP(r))
 
-	fmt.Printf("Redirect %s to %s", alias, originalLink.OriginalUrl)
-	fmt.Println()
-	http.Redirect(w, r, originalLink.OriginalUrl, 301)
+	http.Redirect(w, r, originalLink.OriginalUrl, http.StatusMovedPermanently)
 }
 
 func validateLink(link string) error {
@@ -153,4 +127,46 @@ func (e ValidationError) Error() string {
 			e.error)
 	}
 	return fmt.Sprintf("validation error in %s: %s", e.value, e.message)
+}
+
+func (h *LinkHandler) respondError(ctx context.Context,
+	w http.ResponseWriter,
+	status int,
+	message string,
+	err error) {
+	requestId, ok := ctx.Value(middleware.RequestIDKey).(string)
+	if !ok || requestId == "" {
+		requestId = "unknown"
+	}
+	h.logger.WarnContext(ctx, "request error",
+		"status", status,
+		"message", message,
+		"error", err,
+		"error_type", fmt.Sprintf("%T", err),
+		"request_id", requestId)
+	http.Error(w, message, status)
+}
+
+func (h *LinkHandler) respondJSON(ctx context.Context, w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		h.logger.ErrorContext(ctx, "response encoding failed", "error", err)
+	}
+}
+
+func getClientIP(r *http.Request) string {
+	forwarded := r.Header.Get("X-Forwarded-For")
+	if forwarded != "" {
+		//если несколько IP через запятую, берем первый
+		ips := strings.Split(forwarded, ",")
+		return strings.TrimSpace(ips[0])
+	}
+	// проверяем X-Real-IP
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		return realIP
+	}
+	// если нет прокси, берем RemoteAddr
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return ip
 }

@@ -8,3 +8,21 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+
+# IntelliJ IDEA
+.idea/
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/httpRequests/
+.idea/dataSources.xml
+.idea/dataSources/
+.idea/sqldialects.xml
+.idea/project_default.xml
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db

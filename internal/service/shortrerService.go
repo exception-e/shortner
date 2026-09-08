@@ -11,13 +11,13 @@ import (
 )
 
 type ShortnerService struct {
-	mapStorage storageTypes.LinkStorage
-	logger     *slog.Logger
+	linkStorage storageTypes.LinkStorage
+	logger      *slog.Logger
 }
 
-func NewShortnerService(mapStorage storageTypes.LinkStorage, logger *slog.Logger) *ShortnerService {
+func NewShortnerService(linkStorage storageTypes.LinkStorage, logger *slog.Logger) (*ShortnerService, error) {
 	componentLogger := logger.With(slog.String("component", "shortnerService"))
-	return &ShortnerService{mapStorage: mapStorage, logger: componentLogger}
+	return &ShortnerService{linkStorage: linkStorage, logger: componentLogger}, nil
 }
 
 func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string, error) {
@@ -28,7 +28,7 @@ func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string,
 	if err != nil {
 		return "", fmt.Errorf("service failed to save url %s: %w", link, err)
 	}
-	existingAlias, err := s.mapStorage.PutLink(ctx, newLink)
+	existingAlias, err := s.linkStorage.PutLink(ctx, newLink)
 	if err != nil {
 		return "", fmt.Errorf("service failed to save url %s: %w", link, err)
 	}
@@ -38,7 +38,7 @@ func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string,
 
 func (s *ShortnerService) GetOriginalLink(ctx context.Context, alias string) (*domain.Link, error) {
 	s.logger.Info("Getting original link", slog.String("shortLink", alias))
-	link, err := s.mapStorage.GetLink(ctx, alias)
+	link, err := s.linkStorage.GetLink(ctx, alias)
 	if err != nil {
 		return nil, fmt.Errorf("service: failed to get original url for alias %s: %w", alias, err)
 	}

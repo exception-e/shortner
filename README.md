@@ -8,9 +8,9 @@ Pet project to study go
 + rest endpoints:
 
 ```
-GET http://localhost:8080/{shortLink}
+GET http://localhost:8080/api/v1/shorten/{shortLink}
 
-POST http://localhost:8080/
+POST http://localhost:8080/api/v1/shorten
 Content-Type: application/json
 {
    "link":"https://google.com"

@@ -18,20 +18,11 @@ type PgStorage struct {
 	logger *slog.Logger
 }
 
-func NewPostgresStorage(dsn string, logger *slog.Logger) (*PgStorage, error) {
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("sql.Open: %w", err)
-	} // TODO: fmt.Errorf("sql.Open: %w")???????
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to connect to postgres db %w", err)
-	}
-
-	logger.Info("Connected to pg database")
-
+func NewPostgresStorage(db *sql.DB, logger *slog.Logger) (*PgStorage, error) {
+	componentLogger := logger.With(slog.String("component", "postgres-storage"))
 	return &PgStorage{
 		db:     db,
-		logger: logger,
+		logger: componentLogger,
 	}, nil
 }
 
@@ -47,7 +38,7 @@ func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string,
 		err := store.db.QueryRowContext(ctx,
 			"INSERT INTO links (short_link, original_url) "+
 				"VALUES ($1, $2)"+
-				"ON CONFLICT(short_link) DO NOTHING"+
+				"ON CONFLICT(short_link) DO NOTHING "+
 				"RETURNING short_link",
 			alias, link.OriginalUrl).Scan(&existingAlias)
 		if err == nil {
@@ -74,7 +65,7 @@ func (store *PgStorage) GetLink(ctx context.Context, alias string) (*domain.Link
 	var dto types.LinkDTO
 
 	err := store.db.QueryRowContext(ctx,
-		"SELECT id, short_code, original_url, created_at FROM links WHERE shortlink == $1",
+		"SELECT id, short_link, original_url, created_at FROM links WHERE short_link = $1",
 		alias).
 		Scan(&dto.ID, &dto.Alias, &dto.OriginalURL, &dto.CreatedAt)
 
