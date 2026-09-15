@@ -141,8 +141,8 @@ func (h *LinkHandler) respondError(ctx context.Context,
 		"status", status,
 		"message", message,
 		"error", err,
-		"error_type", fmt.Sprintf("%T", err),
-		"request_id", requestId)
+		"error_type", fmt.Sprintf("%T", err))
+	//"request_id", requestId)
 	http.Error(w, message, status)
 }
 

@@ -15,11 +15,12 @@ import (
 type ShortnerService struct {
 	linkStorage storageTypes.LinkStorage
 	logger      *slog.Logger
+	baseURL     string
 }
 
-func NewShortnerService(linkStorage storageTypes.LinkStorage, logger *slog.Logger) (*ShortnerService, error) {
+func NewShortnerService(linkStorage storageTypes.LinkStorage, logger *slog.Logger, baseUrl string) (*ShortnerService, error) {
 	componentLogger := logger.With(slog.String("component", "shortnerService"))
-	return &ShortnerService{linkStorage: linkStorage, logger: componentLogger}, nil
+	return &ShortnerService{linkStorage: linkStorage, logger: componentLogger, baseURL: baseUrl}, nil
 }
 
 func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string, error) {
@@ -38,7 +39,7 @@ func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string,
 		return "", fmt.Errorf("db error %s: %w: %w", link, ErrNotSaved, err)
 	}
 	s.logger.Info("Link shortened and saved", slog.String("alias", existingAlias))
-	return "http://localhost:8080/" + existingAlias, nil
+	return s.baseURL + existingAlias, nil
 }
 
 func (s *ShortnerService) GetOriginalLink(ctx context.Context, alias string) (*domain.Link, error) {

@@ -10,8 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"shortner/internal/config"
 	"shortner/internal/handlers"
+	"shortner/internal/logger"
 	"shortner/internal/service"
+	"shortner/internal/storage"
 	"shortner/internal/storage/pgStorage"
 	"shortner/internal/storage/types"
 	"syscall"
@@ -27,14 +30,15 @@ import (
 func main() {
 
 	var logHandler = slog.NewJSONHandler(os.Stdout, nil)
-	logger := slog.New(logHandler)
+	logger := logger.New(logHandler)
 
-	dsn := "postgres://tiffany:password@localhost:5432/linkdb?sslmode=disable"
-	// cfg := config.MustLoad() //TODO
-
-	db, err := initDB(dsn)
+	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("Failed to connect to database", "error", err) //что за аргументы?
+		log.Fatal(err)
+	}
+	db, err := initDB(cfg.Storage)
+	if err != nil {
+		logger.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
 	}
 
@@ -43,7 +47,6 @@ func main() {
 		err := db.Close()
 		if err != nil {
 			logger.Error("error closing database", "error", err)
-			//TODO  это норм, что так и не закрыли базу?
 		}
 	}()
 
@@ -57,18 +60,18 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to create storage %w ", err)
 	}
-	linkService, err := service.NewShortnerService(linkStorage, logger)
+	linkService, err := service.NewShortnerService(linkStorage, logger, cfg.Service.BaseURL)
 	if err != nil {
 		log.Fatal("Failed to create service %w", err)
 	}
 	linkHandler := handlers.NewLinkHandler(linkService, logger)
 
 	srv := &http.Server{
-		Addr:         "0.0.0.0:8080",
-		Handler:      setupRouter(linkHandler, logger),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:         cfg.Server.Address,
+		Handler:      setupRouter(linkHandler),
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 		ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 
@@ -97,14 +100,14 @@ func main() {
 	logger.Info("server stopped gracefully")
 }
 
-func initDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", dsn)
+func initDB(cfg storage.Config) (*sql.DB, error) {
+	db, err := sql.Open("postgres", cfg.DSN)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
@@ -113,7 +116,7 @@ func initDB(dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
-func setupRouter(handler *handlers.LinkHandler, logger *slog.Logger) http.Handler {
+func setupRouter(handler *handlers.LinkHandler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
