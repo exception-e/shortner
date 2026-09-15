@@ -13,6 +13,7 @@ import (
 	"shortner/internal/handlers"
 	"shortner/internal/service"
 	"shortner/internal/storage/pgStorage"
+	"shortner/internal/storage/types"
 	"syscall"
 	"time"
 
@@ -50,8 +51,9 @@ func main() {
 		logger.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
+	var linkStorage types.LinkStorage
 
-	linkStorage, err := pgStorage.NewPostgresStorage(db, logger)
+	linkStorage, err = pgStorage.NewPostgresStorage(db, logger)
 	if err != nil {
 		log.Fatal("Failed to create storage %w ", err)
 	}

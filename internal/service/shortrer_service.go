@@ -8,6 +8,8 @@ import (
 	"shortner/internal/utils"
 
 	storageTypes "shortner/internal/storage/types"
+
+	"github.com/pkg/errors"
 )
 
 type ShortnerService struct {
@@ -25,12 +27,15 @@ func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string,
 
 	alias := utils.EncodeBase62(utils.GetHash(link))
 	newLink, err := domain.NewLink(link, alias)
-	if err != nil {
-		return "", fmt.Errorf("service failed to save url %s: %w", link, err)
+	if err != nil { //TODO: проверяю второй раз?
+		return "", fmt.Errorf("invalid url %s: %w: %w", link, ErrInvalidURL, err)
 	}
 	existingAlias, err := s.linkStorage.PutLink(ctx, newLink)
 	if err != nil {
-		return "", fmt.Errorf("service failed to save url %s: %w", link, err)
+		if errors.Is(err, storageTypes.ErrAlreadyExists) { // unique_violation
+			return "", fmt.Errorf("service failed to save url %s: %w: %w", link, ErrAlreadyExists, err)
+		}
+		return "", fmt.Errorf("db error %s: %w: %w", link, ErrNotSaved, err)
 	}
 	s.logger.Info("Link shortened and saved", slog.String("alias", existingAlias))
 	return "http://localhost:8080/" + existingAlias, nil
@@ -40,7 +45,7 @@ func (s *ShortnerService) GetOriginalLink(ctx context.Context, alias string) (*d
 	s.logger.Info("Getting original link", slog.String("shortLink", alias))
 	link, err := s.linkStorage.GetLink(ctx, alias)
 	if err != nil {
-		return nil, fmt.Errorf("service: failed to get original url for alias %s: %w", alias, err)
+		return nil, fmt.Errorf("service: failed to get original url for alias %s: %w: %w", alias, ErrNotFound, err)
 	}
 	s.logger.Info("Original link for alias", slog.String("alias", link.Alias))
 	return link, nil

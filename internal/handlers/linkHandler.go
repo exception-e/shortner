@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -24,7 +25,7 @@ import (
 //в этой строке*/
 
 type LinkHandler struct {
-	Service *service.ShortnerService
+	Service service.LinkService
 	logger  *slog.Logger
 }
 
@@ -36,7 +37,7 @@ type ShortenLinkResponse struct {
 	ShortLink string `json:"shortLink"`
 }
 
-func NewLinkHandler(s *service.ShortnerService, logger *slog.Logger) *LinkHandler {
+func NewLinkHandler(s service.LinkService, logger *slog.Logger) *LinkHandler {
 	componentLogger := logger.With(slog.String("component", "link-handler"))
 	return &LinkHandler{Service: s, logger: componentLogger}
 }
@@ -56,7 +57,11 @@ func (h *LinkHandler) CreateShortLink(w http.ResponseWriter, r *http.Request) {
 
 	alias, err := h.Service.ShortenLink(r.Context(), shortenRequest.Link)
 	if err != nil { //TODO специфические ошибки
-		h.respondError(r.Context(), w, http.StatusBadRequest, "Unable to shorten link", err)
+		if errors.Is(err, service.ErrAlreadyExists) {
+			h.respondError(r.Context(), w, http.StatusConflict, "Unable to shorten link", err)
+			return
+		}
+		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to shorten link", err)
 		return
 	}
 
@@ -64,15 +69,9 @@ func (h *LinkHandler) CreateShortLink(w http.ResponseWriter, r *http.Request) {
 		ShortLink: alias,
 	}
 
-	respData, merr := json.Marshal(resp)
-	if merr != nil {
-		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to marshal response", merr)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_, werr := w.Write(respData)
-	if werr != nil {
-		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to write response", werr)
+	err = h.respondJSON(r.Context(), w, http.StatusOK, resp)
+	if err != nil {
+		h.respondError(r.Context(), w, http.StatusInternalServerError, "Unable to write response", err)
 		return
 	}
 }
@@ -81,7 +80,7 @@ func (h *LinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	alias := strings.TrimSpace(chi.URLParam(r, "alias"))
 	if alias == "" {
 		h.respondError(r.Context(), w, http.StatusBadRequest, "Missing alias",
-			ValidationError{message: "missing alias", value: ""})
+			&ValidationError{message: "missing alias", value: ""})
 		return
 	}
 	originalLink, err := h.Service.GetOriginalLink(r.Context(), alias)
@@ -91,11 +90,11 @@ func (h *LinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.InfoContext(r.Context(), "redirect",
 		"alias", alias,
-		"original_url", originalLink.OriginalUrl,
+		"original_url", originalLink.OriginalURL,
 		"user_agent", r.UserAgent(),
 		"ip", getClientIP(r))
 
-	http.Redirect(w, r, originalLink.OriginalUrl, http.StatusMovedPermanently)
+	http.Redirect(w, r, originalLink.OriginalURL, http.StatusMovedPermanently)
 }
 
 func validateLink(link string) error {
@@ -121,8 +120,8 @@ type ValidationError struct {
 	error   error
 }
 
-func (e ValidationError) Error() string {
-	if e.error == nil {
+func (e *ValidationError) Error() string {
+	if e.error != nil {
 		return fmt.Sprintf("validation error in %s: %s %v", e.value, e.message,
 			e.error)
 	}
@@ -147,12 +146,14 @@ func (h *LinkHandler) respondError(ctx context.Context,
 	http.Error(w, message, status)
 }
 
-func (h *LinkHandler) respondJSON(ctx context.Context, w http.ResponseWriter, status int, data interface{}) {
+func (h *LinkHandler) respondJSON(ctx context.Context, w http.ResponseWriter, status int, data interface{}) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		h.logger.ErrorContext(ctx, "response encoding failed", "error", err)
+		return err
 	}
+	return nil
 }
 
 func getClientIP(r *http.Request) string {

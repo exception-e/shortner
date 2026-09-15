@@ -9,7 +9,7 @@ import (
 type Link struct {
 	Id          int64
 	Alias       string
-	OriginalUrl string
+	OriginalURL string
 	CreatedAt   time.Time
 }
 
@@ -27,7 +27,7 @@ func NewLink(originalURL string, shortCode string) (*Link, error) {
 
 	return &Link{
 		Alias:       shortCode,
-		OriginalUrl: originalURL,
+		OriginalURL: originalURL,
 	}, nil
 }
 

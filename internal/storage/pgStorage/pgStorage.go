@@ -40,7 +40,7 @@ func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string,
 				"VALUES ($1, $2)"+
 				"ON CONFLICT(short_link) DO NOTHING "+
 				"RETURNING short_link",
-			alias, link.OriginalUrl).Scan(&existingAlias)
+			alias, link.OriginalURL).Scan(&existingAlias)
 		if err == nil {
 			return existingAlias, nil
 		}
@@ -49,12 +49,12 @@ func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string,
 		}
 
 		if errors.Is(err, sql.ErrNoRows) {
-			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalUrl).Scan(&existingAlias)
+			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalURL).Scan(&existingAlias)
 			if err == nil {
 				return existingAlias, nil
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
-				return "", fmt.Errorf("failed to insert link: %w", err)
+				return "", fmt.Errorf("failed to fetch existing link: %w: %w", types.ErrAlreadyExists, err)
 			}
 		}
 	}
@@ -79,7 +79,7 @@ func (store *PgStorage) GetLink(ctx context.Context, alias string) (*domain.Link
 	return &domain.Link{
 			Id:          dto.ID,
 			Alias:       dto.Alias,
-			OriginalUrl: dto.OriginalURL,
+			OriginalURL: dto.OriginalURL,
 			CreatedAt:   dto.CreatedAt},
 		nil
 }

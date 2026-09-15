@@ -5,6 +5,8 @@ import (
 	"shortner/internal/domain"
 )
 
+//go:generate mockgen -source=storageInterface.go -destination=../../../mocks/storage/mock.go -package=storage_mock
+
 // TODO: godocs
 // TODO: ctx
 type LinkStorage interface {
