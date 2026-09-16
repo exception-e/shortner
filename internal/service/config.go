@@ -8,7 +8,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		BaseURL:         "http://localhost:8080",
+		BaseURL:         "http://localhost:8080/",
 		ShortLinkLength: 6,
 		MaxRetries:      3,
 	}
