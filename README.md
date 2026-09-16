@@ -44,16 +44,10 @@ HTTP/1.1 301 Moved Permanently
 Location: https://www.google.com/search?q=golang
 ```
 
-```
-GET http://localhost:8080/{alias}
 
-POST http://localhost:8080/api/v1/shorten
-Content-Type: application/json
-{
-   "link":"https://google.com"
-}
-```
+
 ### Tech Stack
+
 
 | Category | Technology                                                    |
 |----------|---------------------------------------------------------------|

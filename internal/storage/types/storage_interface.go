@@ -5,7 +5,7 @@ import (
 	"shortner/internal/domain"
 )
 
-//go:generate mockgen -source=storageInterface.go -destination=../../../mocks/storage/mock.go -package=storage_mock
+//go:generate mockgen -source=storage_interface.go -destination=../../../mocks/storage/mock.go -package=storage_mock
 
 // TODO: godocs
 // TODO: ctx
