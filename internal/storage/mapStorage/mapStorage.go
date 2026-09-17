@@ -40,6 +40,13 @@ func (s *MapStorage) GetLink(ctx context.Context, alias string) (*domain.Link, e
 	return link, nil
 }
 
+func (s *MapStorage) FindExistingAlias(ctx context.Context, link *domain.Link) (string, error) {
+	if alias, ok := s.ValuePresent(link); ok {
+		return alias, nil
+	}
+	return "", types.ErrNotFound
+}
+
 func (s *MapStorage) ValuePresent(link *domain.Link) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

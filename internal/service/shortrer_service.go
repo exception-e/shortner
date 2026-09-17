@@ -45,7 +45,7 @@ func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string,
 			if !errors.Is(err, storageTypes.ErrAlreadyExists) {
 				return "", ErrNotSaved
 			}
-			existingAlias, err = s.linkStorage.FindExistingAlias(ctx, link)
+			existingAlias, err = s.linkStorage.FindExistingAlias(ctx, newLink)
 			if err != nil {
 				if errors.Is(err, storageTypes.ErrFetchAlias) {
 					return "", fmt.Errorf("db error %s: %w: %w", link, ErrNotSaved, lastErr)

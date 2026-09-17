@@ -44,22 +44,9 @@ func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string,
 	return existingAlias, nil
 }
 
-//		if errors.Is(err, sql.ErrNoRows) {
-//			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalURL).Scan(&existingAlias)
-//			if err == nil {
-//				return existingAlias, nil
-//			}
-//			if !errors.Is(err, sql.ErrNoRows) {
-//				return "", fmt.Errorf("failed to fetch existing link: %w: %w", types.ErrAlreadyExists, err)
-//			}
-//		}
-//	}
-//	return "", fmt.Errorf("failed to insert link after %d attempts", attemptCounter)
-//}
-
-func (store *PgStorage) FindExistingAlias(ctx context.Context, originalURL string) (string, error) {
+func (store *PgStorage) FindExistingAlias(ctx context.Context, link *domain.Link) (string, error) {
 	var existingAlias string
-	err := store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", originalURL).Scan(&existingAlias)
+	err := store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalURL).Scan(&existingAlias)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return "", types.ErrFetchAlias

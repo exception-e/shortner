@@ -11,5 +11,5 @@ import (
 type LinkStorage interface {
 	PutLink(ctx context.Context, link *domain.Link) (string, error)
 	GetLink(ctx context.Context, alias string) (*domain.Link, error)
-	FindExistingAlias(ctx context.Context, originalURL string) (string, error)
+	FindExistingAlias(ctx context.Context, link *domain.Link) (string, error)
 }
