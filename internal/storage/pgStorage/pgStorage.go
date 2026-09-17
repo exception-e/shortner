@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"shortner/internal/domain"
 	"shortner/internal/storage/types"
-	"shortner/internal/utils"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -29,36 +28,45 @@ func NewPostgresStorage(db *sql.DB, logger *slog.Logger) (*PgStorage, error) {
 func (store *PgStorage) PutLink(ctx context.Context, link *domain.Link) (string, error) {
 	var existingAlias string
 	alias := link.Alias
-	const attemptCounter = 10
-
-	for i := 0; i < attemptCounter; i++ {
-		if i > 0 {
-			alias = utils.AddSalt(link.Alias, i)
-		}
-		err := store.db.QueryRowContext(ctx,
-			"INSERT INTO links (short_link, original_url) "+
-				"VALUES ($1, $2)"+
-				"ON CONFLICT(short_link) DO NOTHING "+
-				"RETURNING short_link",
-			alias, link.OriginalURL).Scan(&existingAlias)
-		if err == nil {
-			return existingAlias, nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("failed to insert link: %w", err)
-		}
-
+	err := store.db.QueryRowContext(ctx,
+		"INSERT INTO links (short_link, original_url) "+
+			"VALUES ($1, $2)"+
+			"ON CONFLICT(short_link) DO NOTHING "+
+			"RETURNING short_link",
+		alias, link.OriginalURL).Scan(&existingAlias)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalURL).Scan(&existingAlias)
-			if err == nil {
-				return existingAlias, nil
-			}
-			if !errors.Is(err, sql.ErrNoRows) {
-				return "", fmt.Errorf("failed to fetch existing link: %w: %w", types.ErrAlreadyExists, err)
-			}
+			//if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
+			return "", types.ErrAlreadyExists
 		}
+		return "", fmt.Errorf("failed to insert link: %w", err)
 	}
-	return "", fmt.Errorf("failed to insert link after %d attempts", attemptCounter)
+	return existingAlias, nil
+}
+
+//		if errors.Is(err, sql.ErrNoRows) {
+//			err = store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", link.OriginalURL).Scan(&existingAlias)
+//			if err == nil {
+//				return existingAlias, nil
+//			}
+//			if !errors.Is(err, sql.ErrNoRows) {
+//				return "", fmt.Errorf("failed to fetch existing link: %w: %w", types.ErrAlreadyExists, err)
+//			}
+//		}
+//	}
+//	return "", fmt.Errorf("failed to insert link after %d attempts", attemptCounter)
+//}
+
+func (store *PgStorage) FindExistingAlias(ctx context.Context, originalURL string) (string, error) {
+	var existingAlias string
+	err := store.db.QueryRowContext(ctx, "SELECT short_link FROM links WHERE original_url = $1", originalURL).Scan(&existingAlias)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", types.ErrFetchAlias
+		}
+		return "", types.ErrNotFound
+	}
+	return existingAlias, nil
 }
 
 func (store *PgStorage) GetLink(ctx context.Context, alias string) (*domain.Link, error) {

@@ -9,5 +9,5 @@ var (
 
 	ErrAlreadyExists = errors.New("storage: alias already exists")
 
-	ErrInvalidArgument = errors.New("storage: invalid argument")
+	ErrFetchAlias = errors.New("storage: failed to fetch existing link")
 )

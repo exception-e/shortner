@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"shortner/internal/domain"
 	"shortner/internal/utils"
 
@@ -26,23 +27,42 @@ func NewShortnerService(linkStorage storageTypes.LinkStorage, logger *slog.Logge
 
 func (s *ShortnerService) ShortenLink(ctx context.Context, link string) (string, error) {
 	s.logger.InfoContext(ctx, "Shortening link", slog.String("link", link))
+	const attemptCounter = 10
+	var lastErr error
+	var existingAlias string
 
-	alias := utils.EncodeBase62(utils.GetHash(link))
-	newLink, err := domain.NewLink(link, alias)
-	if err != nil {
-		return "", fmt.Errorf("invalid url %s: %w: %w", link, ErrInvalidURL, err)
-	}
-
-	existingAlias, err := s.linkStorage.PutLink(ctx, newLink)
-	if err != nil {
-		if errors.Is(err, storageTypes.ErrAlreadyExists) { // unique_violation
-			return "", fmt.Errorf("service failed to save url %s: %w: %w", link, ErrAlreadyExists, err)
+	for i := 0; i < attemptCounter; i++ {
+		alias := utils.EncodeBase62(utils.GetHash(link))
+		if i > 0 {
+			alias = utils.AddSalt(link, i)
 		}
-		return "", fmt.Errorf("db error %s: %w: %w", link, ErrNotSaved, err)
+		newLink, err := domain.NewLink(link, alias)
+		if err != nil {
+			return "", fmt.Errorf("invalid url %s: %w: %w", link, ErrInvalidURL, err)
+		}
+		existingAlias, err = s.linkStorage.PutLink(ctx, newLink)
+		if err != nil {
+			if !errors.Is(err, storageTypes.ErrAlreadyExists) {
+				return "", ErrNotSaved
+			}
+			existingAlias, err = s.linkStorage.FindExistingAlias(ctx, link)
+			if err != nil {
+				if errors.Is(err, storageTypes.ErrFetchAlias) {
+					return "", fmt.Errorf("db error %s: %w: %w", link, ErrNotSaved, lastErr)
+				}
+				continue
+			}
+			break
+		}
+		break
 	}
-	s.logger.InfoContext(ctx, "Link shortened and saved", slog.String("alias", existingAlias))
 
-	return s.baseURL + existingAlias, nil
+	s.logger.InfoContext(ctx, "Link shortened and saved", slog.String("alias", existingAlias))
+	shortURL, err := url.JoinPath(s.baseURL, existingAlias)
+	if err != nil {
+		return "", fmt.Errorf("failed to build short url: %w", err)
+	}
+	return shortURL, nil
 }
 
 func (s *ShortnerService) GetOriginalLink(ctx context.Context, alias string) (*domain.Link, error) {
