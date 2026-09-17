@@ -66,9 +66,9 @@ func (store *PgStorage) GetLink(ctx context.Context, alias string) (*domain.Link
 
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return nil, types.ErrNotFound
+			return nil, types.ErrDBError
 		}
-		return nil, fmt.Errorf("failed to fulfill query: %w", err)
+		return nil, types.ErrNotFound
 	}
 
 	return &domain.Link{

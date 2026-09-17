@@ -73,8 +73,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func runMigrations(db *sql.DB) error {
-	// Ваша логика миграций
+func runMigrations(db *sql.DB) error { //TODO с миграциями
 	_, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS links (
             id BIGSERIAL PRIMARY KEY,
@@ -87,7 +86,7 @@ func runMigrations(db *sql.DB) error {
 	return err
 }
 
-func TestPgStorage_SaveLink(t *testing.T) {
+func TestPgStorage_PutLink(t *testing.T) {
 	ctx := t.Context()
 	storage, err := NewPostgresStorage(testDB, slog.New(tests.NewTestHandler(t)))
 	require.NoError(t, err)
@@ -121,6 +120,8 @@ func TestPgStorage_GetLink(t *testing.T) {
 	storage, err := NewPostgresStorage(testDB, slog.New(tests.NewTestHandler(t)))
 	require.NoError(t, err)
 
+	_, err = testDB.Exec(`TRUNCATE TABLE links RESTART IDENTITY CASCADE`)
+	require.NoError(t, err)
 	// Fixtures
 	link := &domain.Link{Alias: "3fjKsi", OriginalURL: "https://example.com"}
 	_, err = storage.PutLink(ctx, link)

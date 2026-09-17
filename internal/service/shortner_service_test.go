@@ -64,7 +64,7 @@ func TestService_ShortenLink(t *testing.T) {
 				mocks.linkStorage.EXPECT().PutLink(gomock.Any(), input).
 					Return(input.Alias, nil)
 			},
-			expectAlias: "http://localhost:8080/" + mockAlias,
+			expectAlias: mockAlias,
 			expectErr:   false,
 		},
 		{
@@ -160,6 +160,15 @@ func (mockStorage *MockStorage) GetLink(ctx context.Context, alias string) (*dom
 		return nil, types.ErrNotFound
 	}
 	return mockStorage.data[alias], nil
+}
+
+func (m *MockStorage) FindExistingAlias(ctx context.Context, link *domain.Link) (string, error) {
+	for _, link := range m.data {
+		if link.OriginalURL == link.OriginalURL {
+			return link.Alias, nil
+		}
+	}
+	return "", types.ErrNotFound
 }
 
 func TestShortnerService_GetOriginalLink(t *testing.T) {

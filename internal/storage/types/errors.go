@@ -10,4 +10,5 @@ var (
 	ErrAlreadyExists = errors.New("storage: alias already exists")
 
 	ErrFetchAlias = errors.New("storage: failed to fetch existing link")
+	ErrDBError    = errors.New("storage: Database error")
 )
